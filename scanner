@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Sistem Peminjaman & Inventaris Peralatan</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- HTML5 QR Code Scanner -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #qr-reader video {
+      border-radius: 1rem;
+      object-fit: cover;
+      width: 100% !important;
+    }
+    #qr-reader {
+      border: none !important;
+    }
+    .scanner-laser {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #3b82f6, #60a5fa, transparent);
+      box-shadow: 0 0 15px #3b82f6;
+      animation: scanAnim 2s infinite ease-in-out;
+    }
+    @keyframes scanAnim {
+      0% { top: 10%; opacity: 0.8; }
+      50% { top: 90%; opacity: 1; }
+      100% { top: 10%; opacity: 0.8; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-24 md:pb-12">
+
+  <!-- ============================================================== -->
+  <!-- NAVBAR -->
+  <!-- ============================================================== -->
+  <header class="bg-gradient-to-r from-brand-800 to-brand-600 text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-white/10 p-2 rounded-xl backdrop-blur-sm">
+          <i data-lucide="qr-code" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight leading-tight">SIMPEL ALAT</h1>
+          <p class="text-xs text-blue-100 opacity-90">Sistem Peminjaman & Inventaris</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <!-- API Connection Status -->
+        <button id="btn-status-badge" onclick="openConfigModal()" class="flex items-center space-x-1 text-xs px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition backdrop-blur-sm border border-white/20">
+          <span id="api-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="api-status-text" class="hidden sm:inline">Demo Mode</span>
+        </button>
+        <!-- Config Button -->
+        <button onclick="openConfigModal()" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition" title="Pengaturan URL Google Apps Script">
+          <i data-lucide="settings" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-4xl mx-auto px-2 flex border-t border-white/10 overflow-x-auto no-scrollbar">
+      <button onclick="switchTab('scan')" id="tab-btn-scan" class="tab-btn flex-1 min-w-[90px] py-2.5 text-xs font-semibold text-center border-b-2 border-white text-white flex items-center justify-center space-x-1.5">
+        <i data-lucide="scan" class="w-4 h-4"></i>
+        <span>Scan & Pinjam</span>
+      </button>
+      <button onclick="switchTab('return')" id="tab-btn-return" class="tab-btn flex-1 min-w-[90px] py-2.5 text-xs font-semibold text-center border-b-2 border-transparent text-blue-100 hover:text-white flex items-center justify-center space-x-1.5">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        <span>Pengembalian</span>
+      </button>
+      <button onclick="switchTab('catalog')" id="tab-btn-catalog" class="tab-btn flex-1 min-w-[90px] py-2.5 text-xs font-semibold text-center border-b-2 border-transparent text-blue-100 hover:text-white flex items-center justify-center space-x-1.5">
+        <i data-lucide="boxes" class="w-4 h-4"></i>
+        <span>Katalog Alat</span>
+      </button>
+      <button onclick="switchTab('active-loans')" id="tab-btn-active-loans" class="tab-btn flex-1 min-w-[90px] py-2.5 text-xs font-semibold text-center border-b-2 border-transparent text-blue-100 hover:text-white flex items-center justify-center space-x-1.5">
+        <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+        <span>Pinjaman Aktif</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============================================================== -->
+  <!-- MAIN CONTAINER -->
+  <!-- ============================================================== -->
+  <main class="max-w-4xl mx-auto p-4 space-y-4">
+
+    <!-- ------------------------------------------------------------ -->
+    <!-- TAB 1: SCAN & PINJAM (KERANJANG PEMINJAMAN) -->
+    <!-- ------------------------------------------------------------ -->
+    <section id="tab-scan" class="tab-content space-y-4">
+      
+      <!-- Scanner Card -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="camera" class="w-5 h-5 text-brand-600"></i>
+            <h2 class="font-bold text-sm text-slate-800">Scan QR Code Alat</h2>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button id="btn-toggle-cam" onclick="toggleCamera()" class="text-xs px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-medium transition flex items-center space-x-1">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i>
+              <span id="btn-cam-text">Nyalakan Kamera</span>
+            </button>
+            <button id="btn-flip-cam" onclick="flipCamera()" class="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-700 transition" title="Ganti Kamera Depan/Belakang">
+              <i data-lucide="switch-camera" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4">
+          <!-- Camera Container -->
+          <div class="relative w-full max-w-sm mx-auto bg-slate-900 rounded-2xl overflow-hidden aspect-square flex items-center justify-center shadow-inner">
+            <div id="qr-reader" class="w-full h-full"></div>
+            <div id="scanner-overlay" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-slate-400 bg-slate-900/90 pointer-events-none">
+              <i data-lucide="qr-code" class="w-16 h-16 text-slate-600 mb-3 animate-pulse"></i>
+              <p class="text-xs">Kamera mati. Klik "Nyalakan Kamera" atau masukkan kode alat secara manual di bawah.</p>
+            </div>
+            <div id="scanner-laser" class="scanner-laser hidden"></div>
+          </div>
+
+          <!-- Manual Input Barcode -->
+          <div class="mt-4 pt-4 border-t border-slate-100 flex gap-2 max-w-sm mx-auto">
+            <div class="relative flex-1">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-slate-400"></i>
+              <input type="text" id="manual-code-input" placeholder="Ketik Kode Alat (cth: ALT-001)" class="w-full pl-9 pr-3 py-2 text-xs uppercase bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white font-mono" />
+            </div>
+            <button onclick="handleManualSearch()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1">
+              <span>Cari</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Result Card (Muncul setelah scan alat) -->
+      <div id="scanned-tool-card" class="hidden bg-white rounded-2xl shadow-sm border border-brand-200 overflow-hidden transition-all duration-300">
+        <div class="bg-brand-50 px-4 py-3 border-b border-brand-100 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="p-1.5 bg-brand-600 text-white rounded-lg">
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+            </span>
+            <span class="font-bold text-xs text-brand-900">Hasil Scan Peralatan</span>
+          </div>
+          <button onclick="closeScannedCard()" class="text-slate-400 hover:text-slate-600">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="p-4 space-y-3">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <span id="res-tool-code" class="inline-block px-2 py-0.5 text-xs font-mono font-bold bg-slate-100 text-slate-700 rounded-md mb-1">ALT-001</span>
+              <h3 id="res-tool-name" class="text-base font-bold text-slate-900 leading-tight">Nama Peralatan</h3>
+              <p id="res-tool-brand" class="text-xs text-slate-500">Merk / Tipe</p>
+            </div>
+            <div class="text-right flex flex-col items-end gap-1">
+              <span id="res-tool-status" class="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800">TERSEDIA</span>
+              <span id="res-tool-condition" class="px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-100 text-slate-600">Kondisi: Baik</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+            <div>
+              <span class="text-slate-400 block text-[10px]">Kategori</span>
+              <span id="res-tool-category" class="font-semibold text-slate-700">-</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">Lokasi Simpan</span>
+              <span id="res-tool-location" class="font-semibold text-slate-700">-</span>
+            </div>
+            <div class="col-span-2">
+              <span class="text-slate-400 block text-[10px]">Keterangan</span>
+              <span id="res-tool-notes" class="text-slate-600 text-[11px]">-</span>
+            </div>
+          </div>
+
+          <!-- Action Button: Add to Cart -->
+          <button id="btn-add-to-cart" onclick="addScannedToolToCart()" class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center space-x-2">
+            <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+            <span>+ Masukkan ke Keranjang Peminjaman</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Keranjang Peminjaman (Cart List) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="shopping-bag" class="w-5 h-5 text-brand-600"></i>
+            <h2 class="font-bold text-sm text-slate-800">Keranjang Peminjaman</h2>
+            <span id="cart-counter-badge" class="px-2 py-0.5 text-xs font-extrabold bg-brand-600 text-white rounded-full">0</span>
+          </div>
+          <button onclick="clearCart()" class="text-xs text-rose-600 hover:text-rose-700 font-medium flex items-center space-x-1">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Kosongkan</span>
+          </button>
+        </div>
+
+        <div id="cart-items-container" class="p-4 divide-y divide-slate-100">
+          <!-- Item keranjang akan di-render di sini via JS -->
+          <div id="cart-empty-state" class="text-center py-8 text-slate-400">
+            <i data-lucide="shopping-cart" class="w-12 h-12 mx-auto mb-2 text-slate-300"></i>
+            <p class="text-xs font-medium">Keranjang peminjaman masih kosong</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Scan QR alat untuk memasukkannya ke keranjang</p>
+          </div>
+        </div>
+
+        <!-- Cart Footer / Checkout Trigger -->
+        <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+          <div>
+            <span class="text-[11px] text-slate-500 block">Total Item Dipilih:</span>
+            <span id="cart-total-text" class="text-base font-bold text-slate-900">0 Alat</span>
+          </div>
+          <button id="btn-open-checkout" onclick="openCheckoutModal()" disabled class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center space-x-2">
+            <span>Isi Form & Pinjam</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ------------------------------------------------------------ -->
+    <!-- TAB 2: PENGEMBALIAN ALAT (RETURN) -->
+    <!-- ------------------------------------------------------------ -->
+    <section id="tab-return" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
+        <div class="flex items-center space-x-2 border-b border-slate-100 pb-3">
+          <i data-lucide="rotate-ccw" class="w-5 h-5 text-emerald-600"></i>
+          <h2 class="font-bold text-sm text-slate-800">Proses Pengembalian Peralatan</h2>
+        </div>
+
+        <p class="text-xs text-slate-500">Scan QR Code alat yang dikembalikan atau masukkan Kode Alat / ID Peminjaman di bawah.</p>
+
+        <!-- Input Kode Alat / Loan ID -->
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Kode Alat / ID Peminjaman</label>
+            <div class="flex gap-2">
+              <input type="text" id="return-code-input" placeholder="cth: ALT-001 atau PJM-20260928-1234" class="w-full px-3 py-2 text-xs uppercase bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono" />
+              <button onclick="checkReturnItem()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition">
+                Cek
+              </button>
+            </div>
+          </div>
+
+          <div id="return-preview-box" class="hidden p-3 bg-emerald-50 rounded-xl border border-emerald-100 space-y-3">
+            <div class="flex justify-between items-start">
+              <div>
+                <span id="ret-preview-code" class="text-xs font-mono font-bold text-emerald-900 bg-white px-2 py-0.5 rounded border border-emerald-200">ALT-001</span>
+                <h4 id="ret-preview-name" class="font-bold text-sm text-slate-800 mt-1">Nama Alat</h4>
+                <p id="ret-preview-borrower" class="text-xs text-slate-600">Peminjam: -</p>
+              </div>
+              <span class="px-2 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">DIPINJAM</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Kondisi Saat Dikembalikan</label>
+                <select id="return-condition" class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs">
+                  <option value="Baik" selected>Baik (Siap Digunakan)</option>
+                  <option value="Rusak Ringan">Rusak Ringan</option>
+                  <option value="Perlu Perbaikan / Rusak">Perlu Perbaikan / Maintenance</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Nama Yang Mengembalikan</label>
+                <input type="text" id="return-by-name" placeholder="Nama pengembali" class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1 text-xs">Catatan Pengembalian</label>
+              <input type="text" id="return-notes" placeholder="cth: Kelengkapan kabel lengkap" class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs" />
+            </div>
+
+            <button onclick="submitReturnProcess()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2">
+              <i data-lucide="check-check" class="w-4 h-4"></i>
+              <span>Konfirmasi Pengembalian Alat</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------ -->
+    <!-- TAB 3: KATALOG & INVENTARIS ALAT -->
+    <!-- ------------------------------------------------------------ -->
+    <section id="tab-catalog" class="tab-content hidden space-y-4">
+      <!-- Filter & Search Bar -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3">
+        <div class="flex flex-col sm:flex-row gap-2">
+          <div class="relative flex-1">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-slate-400"></i>
+            <input type="text" id="catalog-search" oninput="filterCatalog()" placeholder="Cari nama alat, merk, atau kode..." class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div class="flex gap-2">
+            <select id="catalog-filter-status" onchange="filterCatalog()" class="px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="ALL">Semua Status</option>
+              <option value="TERSEDIA">Tersedia</option>
+              <option value="DIPINJAM">Dipinjam</option>
+              <option value="MAINTENANCE">Maintenance</option>
+            </select>
+            <button onclick="fetchInventoryData()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition" title="Refresh Data">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Catalog Grid -->
+      <div id="catalog-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- Catalog cards di-render di sini via JS -->
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------ -->
+    <!-- TAB 4: PINJAMAN AKTIF -->
+    <!-- ------------------------------------------------------------ -->
+    <section id="tab-active-loans" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="clipboard-list" class="w-5 h-5 text-brand-600"></i>
+            <h2 class="font-bold text-sm text-slate-800">Daftar Peminjaman Aktif</h2>
+          </div>
+          <button onclick="fetchActiveLoans()" class="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs flex items-center space-x-1">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        <div id="active-loans-container" class="space-y-3">
+          <!-- Active loans di-render di sini via JS -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================== -->
+  <!-- MODAL: FORM CHECKOUT PEMINJAMAN -->
+  <!-- ============================================================== -->
+  <div id="checkout-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+      
+      <div class="p-4 bg-gradient-to-r from-brand-800 to-brand-600 text-white rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="file-check" class="w-5 h-5"></i>
+          <h3 class="font-bold text-sm">Formulir Checkout Peminjaman</h3>
+        </div>
+        <button onclick="closeCheckoutModal()" class="text-white/80 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-checkout" onsubmit="handleCheckoutSubmit(event)" class="p-5 space-y-4">
+        
+        <!-- Ringkasan Alat yang dipinjam -->
+        <div class="bg-blue-50/80 p-3 rounded-xl border border-blue-100 space-y-1.5">
+          <span class="text-[11px] font-bold text-brand-900 block">Daftar Alat Dalam Keranjang (<span id="modal-cart-count">0</span> Item):</span>
+          <div id="modal-cart-summary-list" class="space-y-1 max-h-28 overflow-y-auto text-xs text-slate-700"></div>
+        </div>
+
+        <!-- Input Data Peminjam -->
+        <div class="space-y-3 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Nama Lengkap Peminjam <span class="text-rose-500">*</span></label>
+            <input type="text" id="input-borrower-name" required placeholder="cth: Ahmad Fauzi" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">No. WhatsApp / HP</label>
+              <input type="tel" id="input-borrower-contact" placeholder="cth: 081234567890" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Divisi / Unit Kerja</label>
+              <input type="text" id="input-borrower-division" placeholder="cth: Tim Liputan / Studio" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Keperluan Peminjaman <span class="text-rose-500">*</span></label>
+              <input type="text" id="input-borrower-purpose" required placeholder="cth: Liputan Acara Daerah" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Estimasi Tanggal Kembali <span class="text-rose-500">*</span></label>
+              <input type="date" id="input-borrower-return-date" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Catatan Tambahan</label>
+            <textarea id="input-borrower-notes" rows="2" placeholder="cth: Dipakai bersama 2 baterai cadangan" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+          </div>
+        </div>
+
+        <div class="pt-2 flex gap-2">
+          <button type="button" onclick="closeCheckoutModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
+            Batal
+          </button>
+          <button type="submit" id="btn-submit-loan" class="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center space-x-2">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Konfirmasi & Simpan</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- MODAL: PENGATURAN API (GOOGLE APPS SCRIPT URL) -->
+  <!-- ============================================================== -->
+  <div id="config-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-5 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center space-x-2 text-slate-800">
+          <i data-lucide="settings" class="w-5 h-5 text-brand-600"></i>
+          <h3 class="font-bold text-sm">Pengaturan Google Apps Script</h3>
+        </div>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-500 leading-relaxed">
+          Tempelkan URL Web App Google Apps Script Anda (format: <code class="text-brand-600 bg-slate-100 px-1 py-0.5 rounded">https://script.google.com/macros/s/.../exec</code>) agar data tersimpan langsung ke Google Sheets.
+        </p>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Web App Deployment URL:</label>
+          <input type="url" id="config-gas-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono text-[11px]" />
+        </div>
+
+        <div class="bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-amber-800 text-[11px] flex items-start space-x-2">
+          <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+          <span>Jika URL dikosongkan, sistem akan otomatis beralih ke <strong>Demo Mode</strong> dengan data simulasi lokal.</span>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button onclick="testGasConnection()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center space-x-1">
+          <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+          <span>Tes Koneksi</span>
+        </button>
+        <button onclick="saveGasConfig()" class="flex-1 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl transition">
+          Simpan Pengaturan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Beep Effect on Scan -->
+  <audio id="scan-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+  <!-- ============================================================== -->
+  <!-- JAVASCRIPT LOGIC -->
+  <!-- ============================================================== -->
+  <script>
+    // --- STATE MANAGEMENT ---
+    let state = {
+      gasUrl: localStorage.getItem('simpel_gas_url') || '',
+      cart: JSON.parse(localStorage.getItem('simpel_cart') || '[]'),
+      inventory: [],
+      activeLoans: [],
+      currentScannedTool: null,
+      isScannerRunning: false,
+      scannerInstance: null,
+      facingMode: 'environment' // default back camera
+    };
+
+    // --- SAMPLE DEMO DATA (Fallback jika belum pasang GAS URL) ---
+    const DEMO_INVENTORY = [
+      { code: 'ALT-001', name: 'Kamera Sony A7 IV', brand: 'Sony Alpha 7 IV', category: 'Kamera', condition: 'Baik', status: 'TERSEDIA', location: 'Lemari A1', notes: 'Kamera mirrorless full-frame 33MP' },
+      { code: 'ALT-002', name: 'Lensa Sony FE 24-70mm f/2.8 GM', brand: 'Sony GM', category: 'Lensa', condition: 'Baik', status: 'TERSEDIA', location: 'Lemari A2', notes: 'Lensa zoom standar profesional' },
+      { code: 'ALT-003', name: 'Wireless Mic Saramonic Blink 500', brand: 'Saramonic Blink 500 Pro', category: 'Audio', condition: 'Baik', status: 'TERSEDIA', location: 'Laci Audio', notes: 'Dual transmitter + 1 receiver' },
+      { code: 'ALT-004', name: 'Tripod Manfrotto 504HD', brand: 'Manfrotto', category: 'Aksesoris', condition: 'Baik', status: 'TERSEDIA', location: 'Gudang B', notes: 'Tripod video fluid head kapasitas 12kg' },
+      { code: 'ALT-005', name: 'Lighting Godox SL-60W', brand: 'Godox SL60W', category: 'Lighting', condition: 'Baik', status: 'TERSEDIA', location: 'Rak Lampu', notes: 'LED Video Light 5600K Daylight' }
+    ];
+
+    // --- INITIALIZATION ---
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      updateApiStatusBadge();
+      renderCartUI();
+      fetchInventoryData();
+
+      // Set default return date = besok
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const yyyy = tomorrow.getFullYear();
+      const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const dd = String(tomorrow.getDate()).padStart(2, '0');
+      document.getElementById('input-borrower-return-date').value = `${yyyy}-${mm}-${dd}`;
+    });
+
+    // --- TAB SWITCHER ---
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('border-white', 'text-white');
+        el.classList.add('border-transparent', 'text-blue-100');
+      });
+
+      const activeTab = document.getElementById(`tab-${tabId}`);
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      if (activeTab) activeTab.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.classList.remove('border-transparent', 'text-blue-100');
+        activeBtn.classList.add('border-white', 'text-white');
+      }
+
+      if (tabId === 'active-loans') fetchActiveLoans();
+      if (tabId === 'catalog') renderCatalogGrid(state.inventory);
+      lucide.createIcons();
+    }
+
+    // --- CAMERA & QR SCANNER ---
+    function toggleCamera() {
+      if (state.isScannerRunning) {
+        stopScanner();
+      } else {
+        startScanner();
+      }
+    }
+
+    function startScanner() {
+      const qrReaderElem = document.getElementById('qr-reader');
+      const overlay = document.getElementById('scanner-overlay');
+      const laser = document.getElementById('scanner-laser');
+      const btnText = document.getElementById('btn-cam-text');
+
+      if (!state.scannerInstance) {
+        state.scannerInstance = new Html5Qrcode('qr-reader');
+      }
+
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      state.scannerInstance.start(
+        { facingMode: state.facingMode },
+        config,
+        (decodedText) => {
+          onQrCodeScanned(decodedText);
+        },
+        (errorMessage) => {
+          // ignore scan frame errors
+        }
+      ).then(() => {
+        state.isScannerRunning = true;
+        overlay.classList.add('hidden');
+        laser.classList.remove('hidden');
+        btnText.textContent = 'Matikan Kamera';
+      }).catch(err => {
+        Swal.fire({
+          icon: 'error',
+          title: 'Gagal Membuka Kamera',
+          text: 'Pastikan izin akses kamera telah diizinkan di browser Anda.'
+        });
+      });
+    }
+
+    function stopScanner() {
+      if (state.scannerInstance && state.isScannerRunning) {
+        state.scannerInstance.stop().then(() => {
+          state.isScannerRunning = false;
+          document.getElementById('scanner-overlay').classList.remove('hidden');
+          document.getElementById('scanner-laser').classList.add('hidden');
+          document.getElementById('btn-cam-text').textContent = 'Nyalakan Kamera';
+        }).catch(err => console.error(err));
+      }
+    }
+
+    function flipCamera() {
+      state.facingMode = (state.facingMode === 'environment') ? 'user' : 'environment';
+      if (state.isScannerRunning) {
+        stopScanner();
+        setTimeout(startScanner, 300);
+      }
+    }
+
+    function playBeepSound() {
+      const audio = document.getElementById('scan-sound');
+      if (audio) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+    }
+
+    // --- SCAN PROCESSING ---
+    function onQrCodeScanned(qrCode) {
+      playBeepSound();
+      let cleanCode = qrCode.trim();
+
+      // Jika QR berisi URL dengan param `code=...`
+      if (cleanCode.includes('code=')) {
+        const urlParams = new URLSearchParams(cleanCode.split('?')[1]);
+        cleanCode = urlParams.get('code') || cleanCode;
+      }
+
+      fetchToolDetails(cleanCode);
+    }
+
+    function handleManualSearch() {
+      const input = document.getElementById('manual-code-input');
+      const code = (input.value || '').trim();
+      if (!code) {
+        Swal.fire({ icon: 'warning', title: 'Perhatian', text: 'Masukkan kode alat terlebih dahulu!' });
+        return;
+      }
+      fetchToolDetails(code);
+    }
+
+    // --- FETCH TOOL DETAILS ---
+    async function fetchToolDetails(code) {
+      const card = document.getElementById('scanned-tool-card');
+      const btnAdd = document.getElementById('btn-add-to-cart');
+
+      let tool = null;
+
+      // 1. Coba cari di memori lokal dulu
+      tool = state.inventory.find(t => t.code.toUpperCase() === code.toUpperCase());
+
+      // 2. Jika ada GAS URL dan belum ketemu, request ke API
+      if (!tool && state.gasUrl) {
+        try {
+          Swal.showLoading();
+          const resp = await fetch(`${state.gasUrl}?action=getTool&code=${encodeURIComponent(code)}`);
+          const json = await resp.json();
+          Swal.close();
+          if (json.status === 'success') {
+            tool = json.data;
+          }
+        } catch (e) {
+          Swal.close();
+          console.error(e);
+        }
+      }
+
+      if (!tool) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Alat Tidak Ditemukan',
+          text: `Kode "${code}" tidak terdaftar di database inventaris.`
+        });
+        return;
+      }
+
+      state.currentScannedTool = tool;
+
+      // Render Info Tool Card
+      document.getElementById('res-tool-code').textContent = tool.code;
+      document.getElementById('res-tool-name').textContent = tool.name;
+      document.getElementById('res-tool-brand').textContent = tool.brand || 'Merk Standar';
+      document.getElementById('res-tool-category').textContent = tool.category || '-';
+      document.getElementById('res-tool-location').textContent = tool.location || '-';
+      document.getElementById('res-tool-condition').textContent = `Kondisi: ${tool.condition || 'Baik'}`;
+      document.getElementById('res-tool-notes').textContent = tool.notes || 'Tidak ada catatan khusus';
+
+      const statusBadge = document.getElementById('res-tool-status');
+      const isAvailable = (tool.status || 'TERSEDIA').toUpperCase() === 'TERSEDIA';
+
+      if (isAvailable) {
+        statusBadge.textContent = 'TERSEDIA';
+        statusBadge.className = 'px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800';
+        btnAdd.disabled = false;
+        btnAdd.className = 'w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center space-x-2';
+        btnAdd.innerHTML = `<i data-lucide="shopping-cart" class="w-4 h-4"></i><span>+ Masukkan ke Keranjang Peminjaman</span>`;
+      } else {
+        statusBadge.textContent = tool.status.toUpperCase();
+        statusBadge.className = 'px-2.5 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-800';
+        btnAdd.disabled = true;
+        btnAdd.className = 'w-full py-2.5 px-4 bg-slate-300 text-slate-500 cursor-not-allowed font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2';
+        btnAdd.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4"></i><span>Alat Sedang Tidak Tersedia (${tool.status})</span>`;
+      }
+
+      card.classList.remove('hidden');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      lucide.createIcons();
+    }
+
+    function closeScannedCard() {
+      document.getElementById('scanned-tool-card').classList.add('hidden');
+      state.currentScannedTool = null;
+    }
+
+    // --- CART (KERANJANG PEMINJAMAN) ---
+    function addScannedToolToCart() {
+      if (!state.currentScannedTool) return;
+      addToCart(state.currentScannedTool);
+      closeScannedCard();
+    }
+
+    function addToCart(tool) {
+      const exists = state.cart.some(item => item.code === tool.code);
+      if (exists) {
+        Swal.fire({
+          icon: 'info',
+          title: 'Sudah Ada di Keranjang',
+          text: `Alat "${tool.name}" (${tool.code}) sudah masuk di dalam keranjang peminjaman.`,
+          timer: 2000,
+          showConfirmButton: false
+        });
+        return;
+      }
+
+      state.cart.push({
+        code: tool.code,
+        name: tool.name,
+        brand: tool.brand,
+        condition: tool.condition,
+        category: tool.category
+      });
+
+      saveCart();
+      renderCartUI();
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil Ditambahkan!',
+        text: `"${tool.name}" masuk ke keranjang peminjaman.`,
+        timer: 1500,
+        showConfirmButton: false
+      });
+    }
+
+    function removeFromCart(code) {
+      state.cart = state.cart.filter(item => item.code !== code);
+      saveCart();
+      renderCartUI();
+    }
+
+    function clearCart() {
+      if (state.cart.length === 0) return;
+      Swal.fire({
+        title: 'Kosongkan Keranjang?',
+        text: 'Semua alat yang telah discan akan dihapus dari daftar pinjam.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Ya, Kosongkan',
+        cancelButtonText: 'Batal'
+      }).then(res => {
+        if (res.isConfirmed) {
+          state.cart = [];
+          saveCart();
+          renderCartUI();
+        }
+      });
+    }
+
+    function saveCart() {
+      localStorage.setItem('simpel_cart', JSON.stringify(state.cart));
+    }
+
+    function renderCartUI() {
+      const container = document.getElementById('cart-items-container');
+      const counterBadge = document.getElementById('cart-counter-badge');
+      const totalText = document.getElementById('cart-total-text');
+      const btnCheckout = document.getElementById('btn-open-checkout');
+
+      const count = state.cart.length;
+      counterBadge.textContent = count;
+      totalText.textContent = `${count} Alat`;
+      btnCheckout.disabled = count === 0;
+
+      if (count === 0) {
+        container.innerHTML = `
+          <div id="cart-empty-state" class="text-center py-8 text-slate-400">
+            <i data-lucide="shopping-cart" class="w-12 h-12 mx-auto mb-2 text-slate-300"></i>
+            <p class="text-xs font-medium">Keranjang peminjaman masih kosong</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Scan QR alat untuk memasukkannya ke keranjang</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      let html = '';
+      state.cart.forEach((item, index) => {
+        html += `
+          <div class="py-3 flex items-center justify-between gap-3 group">
+            <div class="flex items-center space-x-3">
+              <span class="w-6 h-6 rounded-full bg-brand-50 text-brand-700 font-bold text-xs flex items-center justify-center border border-brand-100 flex-shrink-0">
+                ${index + 1}
+              </span>
+              <div>
+                <span class="font-mono text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">${item.code}</span>
+                <h4 class="text-xs font-bold text-slate-900 leading-tight mt-0.5">${item.name}</h4>
+                <p class="text-[11px] text-slate-500">${item.brand || '-'}</p>
+              </div>
+            </div>
+            <button onclick="removeFromCart('${item.code}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Hapus">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    // --- CHECKOUT MODAL & SUBMIT ---
+    function openCheckoutModal() {
+      if (state.cart.length === 0) return;
+      document.getElementById('modal-cart-count').textContent = state.cart.length;
+
+      const summaryContainer = document.getElementById('modal-cart-summary-list');
+      summaryContainer.innerHTML = state.cart.map(i => `
+        <div class="flex justify-between py-0.5">
+          <span class="font-medium">• ${i.name}</span>
+          <span class="font-mono text-slate-500">${i.code}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('checkout-modal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeCheckoutModal() {
+      document.getElementById('checkout-modal').classList.add('hidden');
+    }
+
+    async function handleCheckoutSubmit(e) {
+      e.preventDefault();
+      const btnSubmit = document.getElementById('btn-submit-loan');
+
+      const borrowerName = document.getElementById('input-borrower-name').value.trim();
+      const borrowerContact = document.getElementById('input-borrower-contact').value.trim();
+      const borrowerDivision = document.getElementById('input-borrower-division').value.trim();
+      const purpose = document.getElementById('input-borrower-purpose').value.trim();
+      const expectedReturnDate = document.getElementById('input-borrower-return-date').value.trim();
+      const notes = document.getElementById('input-borrower-notes').value.trim();
+      const itemCodes = state.cart.map(i => i.code);
+
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Memproses...</span>`;
+      lucide.createIcons();
+
+      const payload = {
+        action: 'checkoutLoan',
+        borrowerName,
+        borrowerContact,
+        borrowerDivision,
+        purpose,
+        expectedReturnDate,
+        notes,
+        itemCodes
+      };
+
+      try {
+        let loanResult = null;
+
+        if (state.gasUrl) {
+          // Kirim ke Google Apps Script
+          const resp = await fetch(state.gasUrl, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          const json = await resp.json();
+          if (json.status !== 'success') {
+            throw new Error(json.message || 'Gagal memproses peminjaman.');
+          }
+          loanResult = json.loan;
+        } else {
+          // Simulasi di Demo Mode
+          await new Promise(r => setTimeout(r, 1000));
+          const loanId = 'PJM-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random() * 9000);
+          
+          // Update status di lokal inventory
+          state.inventory.forEach(tool => {
+            if (itemCodes.includes(tool.code)) {
+              tool.status = 'DIPINJAM';
+              tool.currentBorrower = borrowerName;
+            }
+          });
+
+          loanResult = {
+            loanId,
+            borrowerName,
+            borrowDate: new Date().toLocaleString('id-ID'),
+            expectedReturnDate,
+            itemCount: itemCodes.length
+          };
+        }
+
+        // Efek Confetti Perayaan
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+
+        closeCheckoutModal();
+        state.cart = [];
+        saveCart();
+        renderCartUI();
+        fetchInventoryData();
+
+        Swal.fire({
+          icon: 'success',
+          title: 'Peminjaman Berhasil!',
+          html: `
+            <div class="text-left text-xs bg-slate-50 p-3 rounded-xl border border-slate-200 mt-2 space-y-1">
+              <p><strong>ID Peminjaman:</strong> <code class="text-brand-600 font-bold">${loanResult.loanId}</code></p>
+              <p><strong>Peminjam:</strong> ${borrowerName}</p>
+              <p><strong>Jumlah Alat:</strong> ${itemCodes.length} unit</p>
+              <p><strong>Estimasi Kembali:</strong> ${expectedReturnDate}</p>
+            </div>
+          `,
+          confirmButtonText: 'Selesai'
+        });
+
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Gagal Checkout',
+          text: err.message
+        });
+      } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>Konfirmasi & Simpan</span>`;
+        lucide.createIcons();
+      }
+    }
+
+    // --- PENGEMBALIAN (RETURN LOGIC) ---
+    function checkReturnItem() {
+      const code = document.getElementById('return-code-input').value.trim().toUpperCase();
+      if (!code) {
+        Swal.fire({ icon: 'warning', title: 'Perhatian', text: 'Masukkan kode alat atau ID peminjaman!' });
+        return;
+      }
+
+      const tool = state.inventory.find(t => t.code.toUpperCase() === code);
+      const previewBox = document.getElementById('return-preview-box');
+
+      if (!tool) {
+        Swal.fire({ icon: 'error', title: 'Tidak Ditemukan', text: `Alat dengan kode "${code}" tidak ditemukan.` });
+        previewBox.classList.add('hidden');
+        return;
+      }
+
+      document.getElementById('ret-preview-code').textContent = tool.code;
+      document.getElementById('ret-preview-name').textContent = tool.name;
+      document.getElementById('ret-preview-borrower').textContent = `Status: ${tool.status} ${tool.currentBorrower ? '(' + tool.currentBorrower + ')' : ''}`;
+
+      previewBox.classList.remove('hidden');
+    }
+
+    async function submitReturnProcess() {
+      const code = document.getElementById('return-code-input').value.trim().toUpperCase();
+      const condition = document.getElementById('return-condition').value;
+      const returnedBy = document.getElementById('return-by-name').value.trim();
+      const notes = document.getElementById('return-notes').value.trim();
+
+      Swal.showLoading();
+
+      const payload = {
+        action: 'returnLoan',
+        itemCodes: [code],
+        conditionAfter: condition,
+        returnedBy: returnedBy,
+        notes: notes
+      };
+
+      try {
+        if (state.gasUrl) {
+          const resp = await fetch(state.gasUrl, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          const json = await resp.json();
+          if (json.status !== 'success') throw new Error(json.message);
+        } else {
+          // Local demo simulation
+          await new Promise(r => setTimeout(r, 800));
+          const tool = state.inventory.find(t => t.code.toUpperCase() === code);
+          if (tool) {
+            tool.status = condition.includes('Rusak') ? 'MAINTENANCE' : 'TERSEDIA';
+            tool.condition = condition;
+            tool.currentBorrower = '';
+          }
+        }
+
+        Swal.fire({
+          icon: 'success',
+          title: 'Alat Berhasil Dikembalikan!',
+          text: `Status alat ${code} sekarang kembali TERSEDIA.`,
+          confirmButtonColor: '#059669'
+        });
+
+        document.getElementById('return-preview-box').classList.add('hidden');
+        document.getElementById('return-code-input').value = '';
+        fetchInventoryData();
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Gagal Mengembalikan', text: err.message });
+      }
+    }
+
+    // --- KATALOG & INVENTARIS ---
+    async function fetchInventoryData() {
+      if (state.gasUrl) {
+        try {
+          const resp = await fetch(`${state.gasUrl}?action=getAllTools`);
+          const json = await resp.json();
+          if (json.status === 'success' && Array.isArray(json.data)) {
+            state.inventory = json.data;
+          }
+        } catch (err) {
+          console.warn('Gagal memuat dari GAS, menggunakan data lokal/demo', err);
+          if (state.inventory.length === 0) state.inventory = [...DEMO_INVENTORY];
+        }
+      } else {
+        if (state.inventory.length === 0) state.inventory = [...DEMO_INVENTORY];
+      }
+      renderCatalogGrid(state.inventory);
+    }
+
+    function renderCatalogGrid(tools) {
+      const grid = document.getElementById('catalog-grid');
+      if (!grid) return;
+
+      if (!tools || tools.length === 0) {
+        grid.innerHTML = `<div class="col-span-2 text-center py-10 text-slate-400 text-xs">Tidak ada data alat yang cocok.</div>`;
+        return;
+      }
+
+      grid.innerHTML = tools.map(tool => {
+        const isAvailable = (tool.status || 'TERSEDIA').toUpperCase() === 'TERSEDIA';
+        const badgeColor = isAvailable 
+          ? 'bg-emerald-100 text-emerald-800' 
+          : ((tool.status || '').toUpperCase() === 'DIPINJAM' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800');
+
+        return `
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3 hover:border-brand-300 transition">
+            <div>
+              <div class="flex justify-between items-start gap-2 mb-1">
+                <span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-600 rounded">${tool.code}</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${badgeColor}">${tool.status}</span>
+              </div>
+              <h3 class="font-bold text-xs text-slate-900 leading-snug">${tool.name}</h3>
+              <p class="text-[11px] text-slate-500">${tool.brand || '-'}</p>
+              
+              <div class="mt-2 text-[10px] text-slate-500 flex items-center space-x-2">
+                <span>📍 ${tool.location || 'Gudang'}</span>
+                <span>•</span>
+                <span>Kondisi: <strong>${tool.condition || 'Baik'}</strong></span>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex gap-1.5">
+              ${isAvailable ? `
+                <button onclick="addToCart(${JSON.stringify(tool).replace(/"/g, '&quot;')})" class="flex-1 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-semibold rounded-lg transition flex items-center justify-center space-x-1">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>+ Keranjang</span>
+                </button>
+              ` : `
+                <span class="flex-1 py-1.5 text-center text-slate-400 bg-slate-50 text-[11px] font-medium rounded-lg">Tidak Tersedia</span>
+              `}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function filterCatalog() {
+      const search = document.getElementById('catalog-search').value.toLowerCase();
+      const status = document.getElementById('catalog-filter-status').value;
+
+      const filtered = state.inventory.filter(tool => {
+        const matchesSearch = tool.name.toLowerCase().includes(search) || 
+                              tool.code.toLowerCase().includes(search) || 
+                              (tool.brand && tool.brand.toLowerCase().includes(search));
+        const matchesStatus = status === 'ALL' || (tool.status || '').toUpperCase() === status;
+        return matchesSearch && matchesStatus;
+      });
+
+      renderCatalogGrid(filtered);
+    }
+
+    // --- PINJAMAN AKTIF ---
+    async function fetchActiveLoans() {
+      const container = document.getElementById('active-loans-container');
+      container.innerHTML = `<div class="text-center py-6 text-slate-400 text-xs"><i data-lucide="loader-2" class="w-5 h-5 mx-auto mb-1 animate-spin"></i>Memuat pinjaman aktif...</div>`;
+      lucide.createIcons();
+
+      if (state.gasUrl) {
+        try {
+          const resp = await fetch(`${state.gasUrl}?action=getActiveLoans`);
+          const json = await resp.json();
+          if (json.status === 'success') {
+            state.activeLoans = json.data;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (!state.activeLoans || state.activeLoans.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-8 text-slate-400">
+            <i data-lucide="clipboard-check" class="w-10 h-10 mx-auto mb-2 text-slate-300"></i>
+            <p class="text-xs">Tidak ada transaksi peminjaman yang sedang berlangsung.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = state.activeLoans.map(loan => `
+        <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+          <div class="flex justify-between items-start">
+            <div>
+              <span class="text-[10px] font-mono font-bold text-brand-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">${loan.loanId}</span>
+              <h4 class="font-bold text-xs text-slate-900 mt-1">${loan.borrowerName} <span class="text-slate-500 font-normal">(${loan.borrowerDivision || '-'})</span></h4>
+            </div>
+            <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800">BERLANGSUNG</span>
+          </div>
+
+          <p class="text-[11px] text-slate-600"><strong>Alat:</strong> ${loan.itemNames || loan.itemCodes.join(', ')} (${loan.itemCount} item)</p>
+          <div class="text-[10px] text-slate-500 flex justify-between">
+            <span>Pinjam: ${loan.borrowDate}</span>
+            <span>Rencana Kembali: <strong>${loan.expectedReturnDate}</strong></span>
+          </div>
+        </div>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    // --- CONFIG MODAL & CONNECTION TEST ---
+    function openConfigModal() {
+      document.getElementById('config-gas-url').value = state.gasUrl;
+      document.getElementById('config-modal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeConfigModal() {
+      document.getElementById('config-modal').classList.add('hidden');
+    }
+
+    function saveGasConfig() {
+      const url = document.getElementById('config-gas-url').value.trim();
+      state.gasUrl = url;
+      localStorage.setItem('simpel_gas_url', url);
+      updateApiStatusBadge();
+      closeConfigModal();
+      fetchInventoryData();
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Pengaturan Disimpan',
+        text: url ? 'Aplikasi sekarang terhubung ke Google Apps Script Anda!' : 'Kembali ke Demo Mode.',
+        timer: 2000,
+        showConfirmButton: false
+      });
+    }
+
+    async function testGasConnection() {
+      const url = document.getElementById('config-gas-url').value.trim();
+      if (!url) {
+        Swal.fire({ icon: 'warning', title: 'URL Kosong', text: 'Masukkan Web App URL terlebih dahulu.' });
+        return;
+      }
+
+      Swal.showLoading();
+      try {
+        const resp = await fetch(`${url}?action=ping`);
+        const json = await resp.json();
+        if (json.status === 'success') {
+          Swal.fire({
+            icon: 'success',
+            title: 'Koneksi Berhasil!',
+            text: 'Google Apps Script Web App berhasil merespons permintaan.'
+          });
+        } else {
+          throw new Error(json.message);
+        }
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Koneksi Gagal',
+          text: 'Tidak dapat menghubungi Web App. Pastikan hak akses deployment adalah "Anyone" (Siapa saja).'
+        });
+      }
+    }
+
+    function updateApiStatusBadge() {
+      const dot = document.getElementById('api-status-dot');
+      const text = document.getElementById('api-status-text');
+
+      if (state.gasUrl) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        text.textContent = 'Sheets Terhubung';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+        text.textContent = 'Demo Mode';
+      }
+    }
+  </script>
+</body>
+</html>
